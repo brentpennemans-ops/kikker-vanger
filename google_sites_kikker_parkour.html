@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🐸 Kikker Parkour</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+  }
+  #gameContainer {
+    width: 100%;
+    height: 100%;
+    position: relative;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* HUD */
+  #hud {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    padding: 12px 20px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    background: linear-gradient(to bottom, rgba(0,0,0,.6), transparent);
+    color: #fff;
+    pointer-events: none;
+    z-index: 100;
+    font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  #hud .pill {
+    background: rgba(0,0,0,.5);
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 14px;
+  }
+  #hud .pill b { color: #7eff7e; }
+
+  /* Checkpoint progress dots */
+  #progress {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    pointer-events: none;
+    z-index: 100;
+    font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  .cp-dot {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.25);
+    border: 2px solid rgba(255,255,255,.4);
+    transition: all .3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #fff;
+  }
+  .cp-dot.done  { background: #7eff7e; border-color: #3f3; box-shadow: 0 0 8px #3f3; }
+  .cp-dot.active{ background: #ffe44e; border-color: #fa0; box-shadow: 0 0 10px #fa0; animation: pulse .7s infinite alternate; }
+  @keyframes pulse { to { transform: scale(1.3); } }
+
+  /* Big centre message */
+  #msg {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: #ffe44e;
+    font-size: 32px;
+    font-weight: bold;
+    pointer-events: none;
+    opacity: 0;
+    text-shadow: 0 0 20px #fa0;
+    text-align: center;
+    white-space: nowrap;
+    z-index: 105;
+    font-family: 'Segoe UI', Arial, sans-serif;
+  }
+
+  /* Crosshair */
+  #crosshair {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    width: 24px; height: 24px;
+    display: none;
+    z-index: 101;
+  }
+  #crosshair::before, #crosshair::after {
+    content: '';
+    position: absolute;
+    background: rgba(255,255,255,.8);
+  }
+  #crosshair::before { width: 2px; height: 100%; left: 11px; }
+  #crosshair::after  { width: 100%; height: 2px; top: 11px; }
+
+  /* Tip bar */
+  #tip {
+    position: absolute;
+    bottom: 55px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,.5);
+    font-size: 12px;
+    pointer-events: none;
+    text-align: center;
+    z-index: 100;
+    font-family: 'Segoe UI', Arial, sans-serif;
+  }
+
+  /* Start / Win / Game Over overlay */
+  #overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,.85);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: #fff;
+    z-index: 200;
+    font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  #overlay h1 {
+    font-size: 52px;
+    color: #7eff7e;
+    text-shadow: 0 0 30px #3f3;
+  }
+  #overlay p {
+    font-size: 16px;
+    color: rgba(255,255,255,.75);
+    text-align: center;
+    line-height: 1.8;
+  }
+  #overlay .keys {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin: 4px 0;
+  }
+  .key {
+    background: rgba(255,255,255,.15);
+    border: 1px solid rgba(255,255,255,.3);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 13px;
+  }
+  #overlay button {
+    padding: 14px 40px;
+    font-size: 18px;
+    border-radius: 12px;
+    border: none;
+    background: #3d9e1f;
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 0 28px rgba(63,255,63,.6);
+    margin-top: 6px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  #overlay button:hover { background: #4ec926; }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+
+  <!-- Canvas (Three.js renders here) -->
+  <canvas id="c"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="pill">🐸 Score: <b id="sc">0</b></div>
+    <div class="pill">❤️ <b id="lv">3</b></div>
+    <div class="pill">🏁 Checkpoint: <b id="cp">0</b>/<b id="cpt">6</b></div>
+    <div class="pill">🪰 Vliegen: <b id="fl">0</b></div>
+    <div class="pill" id="diff-pill">🟢 Makkelijk</div>
+  </div>
+
+  <div id="crosshair"></div>
+  <div id="progress"></div>
+  <div id="msg"></div>
+  <div id="tip">Rechterknop slepen = kijken &nbsp;·&nbsp; Klik op vlieg = tong schieten</div>
+
+  <!-- Start overlay -->
+  <div id="overlay">
+    <h1>🐸 Kikker Parkour</h1>
+    <p>Spring van platform naar platform!<br>Bij elk checkpoint zit een vlieg — vang hem met je tong.<br>Het wordt steeds moeilijker!</p>
+    <div style="display:flex;gap:12px;font-size:13px;flex-wrap:wrap;justify-content:center;">
+      <span style="color:#7eff7e">🟢 CP1 — Makkelijk (9×9)</span>
+      <span style="color:#ffe44e">🟡 CP2-3 — Normaal (6-7×6-7)</span>
+      <span style="color:#ffaa44">🟠 CP4 — Moeilijk (5×5)</span>
+      <span style="color:#ff6644">🔴 CP5 — Hard (4×4)</span>
+      <span style="color:#ff3333">💀 CP6 — Extreem (3×3)</span>
+    </div>
+    <div class="keys">
+      <span class="key">W A S D</span><span style="color:rgba(255,255,255,.5)">lopen</span>
+      <span class="key">Spatie</span><span style="color:rgba(255,255,255,.5)">springen</span>
+      <span class="key">Rechterknop</span><span style="color:rgba(255,255,255,.5)">kijken</span>
+      <span class="key">Klik op vlieg</span><span style="color:rgba(255,255,255,.5)">tong</span>
+    </div>
+    <button id="startBtn">Spelen! 🐸</button>
+  </div>
+
+</div><!-- /gameContainer -->
+
+<!-- Three.js via CDN (zelfde als het voorbeeld) -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// RENDERER — vult de volledige gameContainer
+// ═══════════════════════════════════════════════════════════
+const container = document.getElementById('gameContainer');
+const canvas    = document.getElementById('c');
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+renderer.setClearColor(0x87ceeb);
+
+const scene  = new THREE.Scene();
+scene.fog    = new THREE.Fog(0x87ceeb, 40, 160);
+
+const camera = new THREE.PerspectiveCamera(70, container.clientWidth / container.clientHeight, .1, 400);
+scene.add(camera);
+
+window.addEventListener('resize', () => {
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  camera.aspect = container.clientWidth / container.clientHeight;
+  camera.updateProjectionMatrix();
+});
+
+// ═══════════════════════════════════════════════════════════
+// VERLICHTING
+// ═══════════════════════════════════════════════════════════
+const sun = new THREE.DirectionalLight(0xfffbe0, 1.4);
+sun.position.set(30, 60, 20);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.camera.left   = -100; sun.shadow.camera.right  = 100;
+sun.shadow.camera.top    =  100; sun.shadow.camera.bottom = -100;
+sun.shadow.camera.far    = 300;
+scene.add(sun);
+scene.add(new THREE.AmbientLight(0x88aaff, .7));
+scene.add(new THREE.HemisphereLight(0x87ceeb, 0x4a7a20, .6));
+
+// ═══════════════════════════════════════════════════════════
+// PARKOUR COURSE  (steeds moeilijker per checkpoint)
+// CP1  groot (9×9)  | plat      | super makkelijk
+// CP2  breed (7×7)  | licht omhoog | makkelijk
+// CP3  medium (6×6) | echt klim | normaal
+// CP4  medium (5×5) | zigzag    | moeilijk
+// CP5  klein (4×4)  | grote gaten | hard
+// CP6  tiny (3×3)   | precisie  | extreem
+// EINDE groot gouden platform
+// ═══════════════════════════════════════════════════════════
+const COURSE = [
+  // START
+  {x:0,   y:0,   z:0,    w:12, d:12, color:0x5ab82a, isStart:true},
+
+  // Sectie 1 → CP1  (heel makkelijk — grote tegels, plat)
+  {x:0,   y:0,   z:-10,  w:9,  d:9,  color:0x7a9e3c},
+  {x:0,   y:0,   z:-20,  w:8,  d:8,  color:0x7a9e3c},
+  {x:0,   y:0,   z:-30,  w:8,  d:8,  color:0x7a9e3c},
+  {x:0,   y:.5,  z:-40,  w:9,  d:9,  color:0x8B5E3C, checkpoint:true},   // CP1
+
+  // Sectie 2 → CP2  (makkelijk — iets groter gat, lichte bocht)
+  {x:7,   y:.5,  z:-47,  w:7,  d:7,  color:0x8B5E3C},
+  {x:15,  y:1,   z:-51,  w:7,  d:7,  color:0x8B5E3C},
+  {x:22,  y:1.5, z:-47,  w:7,  d:7,  color:0x8B5E3C},
+  {x:26,  y:2,   z:-40,  w:7,  d:7,  color:0x8B5E3C, checkpoint:true},   // CP2
+
+  // Sectie 3 → CP3  (normaal — 6×6, echte klim)
+  {x:26,  y:2.5, z:-32,  w:6,  d:6,  color:0x8B5E3C},
+  {x:20,  y:3,   z:-26,  w:6,  d:6,  color:0x8B5E3C},
+  {x:12,  y:3.5, z:-22,  w:6,  d:6,  color:0x8B5E3C},
+  {x:4,   y:4,   z:-18,  w:6,  d:6,  color:0x8B5E3C, checkpoint:true},   // CP3
+
+  // Sectie 4 → CP4  (moeilijk — 5×5, zigzag, +1 per stap)
+  {x:-4,  y:5,   z:-22,  w:5,  d:5,  color:0x8B5E3C},
+  {x:-12, y:6,   z:-27,  w:5,  d:5,  color:0x8B5E3C},
+  {x:-18, y:7,   z:-22,  w:5,  d:5,  color:0x8B5E3C},
+  {x:-22, y:8,   z:-14,  w:5,  d:5,  color:0x8B5E3C, checkpoint:true},   // CP4
+
+  // Sectie 5 → CP5  (hard — 4×4, grote gaten, +1.5 per stap)
+  {x:-18, y:9.5, z:-6,   w:4,  d:4,  color:0xa05020},
+  {x:-10, y:11,  z:-2,   w:4,  d:4,  color:0xa05020},
+  {x:-2,  y:12.5,z:-6,   w:4,  d:4,  color:0xa05020},
+  {x:6,   y:14,  z:-10,  w:4,  d:4,  color:0xa05020, checkpoint:true},   // CP5
+
+  // Sectie 6 → CP6  (extreem — 3×3, lange precisie-sprongen)
+  {x:12,  y:15,  z:-16,  w:3,  d:3,  color:0xcc3300},
+  {x:16,  y:16,  z:-23,  w:3,  d:3,  color:0xcc3300},
+  {x:10,  y:17,  z:-30,  w:3,  d:3,  color:0xcc3300},
+  {x:2,   y:18,  z:-34,  w:3,  d:3,  color:0xcc3300, checkpoint:true},   // CP6
+
+  // Finale stretch
+  {x:-6,  y:19,  z:-30,  w:3,  d:3,  color:0xcc3300},
+  {x:-10, y:20,  z:-23,  w:3,  d:3,  color:0xcc3300},
+
+  // EINDE — groot gouden platform
+  {x:-6,  y:21,  z:-14,  w:12, d:12, color:0xffe44e, isEnd:true},
+];
+
+// ─── Platform kleuren ────────────────────────────────────────
+function platSideColor(c){
+  if(c===0x5ab82a||c===0x7a9e3c) return 0x3a7a10;
+  if(c===0xffe44e) return 0xcc9900;
+  if(c===0xcc3300) return 0x881100;
+  if(c===0xa05020) return 0x703010;
+  return 0x6a3e1c;
+}
+
+const platMeshes  = [];
+const checkpoints = [];
+let   cpIndex     = 0;
+
+COURSE.forEach((p, i) => {
+  const side = platSideColor(p.color);
+  const mats = [side,side,p.color,side,side,side].map(c => new THREE.MeshLambertMaterial({color:c}));
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.w, .6, p.d), mats);
+  mesh.position.set(p.x, p.y, p.z);
+  mesh.castShadow = mesh.receiveShadow = true;
+  scene.add(mesh);
+  platMeshes.push({mesh, data:p});
+
+  if(p.isEnd){
+    // Glow laag
+    const glow = new THREE.Mesh(
+      new THREE.BoxGeometry(p.w+.1, .05, p.d+.1),
+      new THREE.MeshBasicMaterial({color:0xffe44e, transparent:true, opacity:.6})
+    );
+    glow.position.set(p.x, p.y+.33, p.z);
+    scene.add(glow);
+    // Rondtollende ring
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(3, .15, 8, 32),
+      new THREE.MeshBasicMaterial({color:0xffe44e})
+    );
+    ring.rotation.x = Math.PI/2;
+    ring.position.set(p.x, p.y+2, p.z);
+    ring.userData.isEndRing = true;
+    scene.add(ring);
+  }
+
+  if(p.checkpoint){
+    const idx  = checkpoints.length;
+    const flag = new THREE.Group();
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(.05,.05,2,8),
+      new THREE.MeshLambertMaterial({color:0xcccccc})
+    );
+    pole.position.y = 1;
+    flag.add(pole);
+    const banner = new THREE.Mesh(
+      new THREE.BoxGeometry(1,.6,.05),
+      new THREE.MeshLambertMaterial({color:0xff4444})
+    );
+    banner.position.set(.55, 1.7, 0);
+    flag.add(banner);
+    flag.position.set(p.x, p.y+.3, p.z);
+    scene.add(flag);
+    checkpoints.push({platform:p, flag, idx, activated:false, fly:null});
+  }
+});
+
+// ─── Vlieg per checkpoint ────────────────────────────────────
+function spawnCheckpointFly(cp){
+  if(cp.fly){ scene.remove(cp.fly); cp.fly=null; }
+  const p   = cp.platform;
+  const grp = new THREE.Group();
+
+  grp.add(new THREE.Mesh(
+    new THREE.SphereGeometry(.22,10,8),
+    new THREE.MeshLambertMaterial({color:0x111111})
+  ));
+  [-1,1].forEach(s=>{
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(.07,6,4), new THREE.MeshLambertMaterial({color:0xff2200}));
+    eye.position.set(s*.1,.06,.18); grp.add(eye);
+  });
+  const wm = new THREE.MeshLambertMaterial({color:0xaaddff,transparent:true,opacity:.7,side:THREE.DoubleSide});
+  [-1,1].forEach(s=>{
+    const w = new THREE.Mesh(new THREE.PlaneGeometry(.45,.22),wm);
+    w.position.set(s*.3,.06,0); w.rotation.x=-.3; grp.add(w);
+  });
+  const halo = new THREE.Mesh(
+    new THREE.RingGeometry(.4,.58,24),
+    new THREE.MeshBasicMaterial({color:0xffee00,side:THREE.DoubleSide,transparent:true,opacity:.9})
+  );
+  halo.rotation.x = -Math.PI/2; grp.add(halo);
+  const ring2 = new THREE.Mesh(
+    new THREE.RingGeometry(.65,.8,24),
+    new THREE.MeshBasicMaterial({color:0xff8800,side:THREE.DoubleSide,transparent:true,opacity:.5})
+  );
+  ring2.rotation.x = -Math.PI/2; grp.add(ring2);
+
+  grp.position.set(p.x, p.y+2.5, p.z);
+  grp.userData = {baseY:p.y+2.5, wobble:Math.random()*6.28, halo, ring:ring2};
+  scene.add(grp);
+  cp.fly = grp;
+}
+spawnCheckpointFly(checkpoints[0]);
+
+// ─── Omgeving ────────────────────────────────────────────────
+scene.add(new THREE.Mesh(
+  new THREE.SphereGeometry(200,16,8),
+  new THREE.MeshBasicMaterial({color:0x87ceeb, side:THREE.BackSide})
+));
+
+for(let i=0; i<18; i++){
+  const cloud = new THREE.Group();
+  [0,.8,-.6].forEach((ox,j)=>{
+    const c = new THREE.Mesh(new THREE.SphereGeometry(2+j*.5,8,6), new THREE.MeshLambertMaterial({color:0xffffff}));
+    c.position.set(ox*3,0,0); cloud.add(c);
+  });
+  cloud.position.set((Math.random()-.5)*160, 30+Math.random()*20, (Math.random()-.5)*160);
+  cloud.scale.setScalar(.8+Math.random()*.8);
+  cloud.userData.drift = (Math.random()-.5)*.003;
+  scene.add(cloud);
+}
+
+function makeTree(x,z,h=1){
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.2,.3,h*2.5,7), new THREE.MeshLambertMaterial({color:0x8B4513}));
+  trunk.position.y=h*1.25; trunk.castShadow=true; g.add(trunk);
+  [[0,h*3.5],[0,h*5.5]].forEach(([dy],k)=>{
+    const l = new THREE.Mesh(new THREE.SphereGeometry((1.8-k*.4)*h,8,6), new THREE.MeshLambertMaterial({color:k?0x4aaa18:0x3a8a10}));
+    l.position.y=dy; l.castShadow=true; g.add(l);
+  });
+  g.position.set(x,0,z); scene.add(g);
+}
+[[-10,10],[10,10],[-12,-8],[12,-8],[-8,30],[8,30],[-15,0],[15,0],
+ [35,-5],[35,5],[-30,0],[-30,-10],[5,-35],[20,-35],[-5,25]].forEach(([x,z])=>makeTree(x,z,.9+Math.random()*.4));
+
+// ─── Kikker ───────────────────────────────────────────────────
+const frogGroup = new THREE.Group();
+
+const bodyMesh = new THREE.Mesh(new THREE.SphereGeometry(.5,16,12), new THREE.MeshLambertMaterial({color:0x4ec926}));
+bodyMesh.scale.set(1,.72,1.15); bodyMesh.castShadow=true; frogGroup.add(bodyMesh);
+
+const belly = new THREE.Mesh(new THREE.SphereGeometry(.38,12,8), new THREE.MeshLambertMaterial({color:0x9eff70}));
+belly.scale.set(1,.6,1); belly.position.set(0,-.05,.18); frogGroup.add(belly);
+
+const headMesh = new THREE.Mesh(new THREE.SphereGeometry(.38,14,10), new THREE.MeshLambertMaterial({color:0x4ec926}));
+headMesh.scale.set(1.05,.8,1); headMesh.position.set(0,.22,.35); frogGroup.add(headMesh);
+
+const snout = new THREE.Mesh(new THREE.SphereGeometry(.18,10,6), new THREE.MeshLambertMaterial({color:0x5ad632}));
+snout.scale.set(1.2,.7,1); snout.position.set(0,.1,.62); frogGroup.add(snout);
+
+[-1,1].forEach(s=>{
+  const n = new THREE.Mesh(new THREE.SphereGeometry(.035,6,4), new THREE.MeshLambertMaterial({color:0x2a7a10}));
+  n.position.set(s*.07,.15,.74); frogGroup.add(n);
+});
+[-1,1].forEach(s=>{
+  const eb = new THREE.Mesh(new THREE.SphereGeometry(.14,10,8), new THREE.MeshLambertMaterial({color:0x3db820}));
+  eb.position.set(s*.22,.44,.28); frogGroup.add(eb);
+  const ir = new THREE.Mesh(new THREE.SphereGeometry(.1,10,8), new THREE.MeshLambertMaterial({color:0xffe000}));
+  ir.position.set(s*.22,.46,.35); frogGroup.add(ir);
+  const pu = new THREE.Mesh(new THREE.SphereGeometry(.062,8,6), new THREE.MeshLambertMaterial({color:0x000}));
+  pu.position.set(s*.22,.47,.4); frogGroup.add(pu);
+  const sh = new THREE.Mesh(new THREE.SphereGeometry(.022,4,4), new THREE.MeshLambertMaterial({color:0xffffff}));
+  sh.position.set(s*.235,.49,.42); frogGroup.add(sh);
+});
+[-1,1].forEach(s=>{
+  const bump = new THREE.Mesh(new THREE.SphereGeometry(.1,8,6), new THREE.MeshLambertMaterial({color:0x3aaa15}));
+  bump.position.set(s*.22,.28,-.1); frogGroup.add(bump);
+});
+
+function makeFrontLeg(side){
+  const g=new THREE.Group();
+  [[[.07,.06,.3,7],-.15,0x4ec926],[[ .055,.045,.28,7],-.44,0x5ad632]].forEach(([args,y,col])=>{
+    const m=new THREE.Mesh(new THREE.CylinderGeometry(...args), new THREE.MeshLambertMaterial({color:col}));
+    m.position.y=y; g.add(m);
+  });
+  const foot=new THREE.Mesh(new THREE.SphereGeometry(.09,7,5), new THREE.MeshLambertMaterial({color:0x4ec926}));
+  foot.scale.set(1.4,.5,1); foot.position.y=-.6; g.add(foot);
+  g.position.set(side*.38,.05,.25); g.rotation.z=side*.15; frogGroup.add(g); return g;
+}
+function makeBackLeg(side){
+  const g=new THREE.Group();
+  [[[.09,.07,.38,7],-.19,0x3db820],[[.065,.05,.38,7],-.57,0x4ec926]].forEach(([args,y,col])=>{
+    const m=new THREE.Mesh(new THREE.CylinderGeometry(...args), new THREE.MeshLambertMaterial({color:col}));
+    m.position.y=y; g.add(m);
+  });
+  const foot=new THREE.Mesh(new THREE.SphereGeometry(.12,7,5), new THREE.MeshLambertMaterial({color:0x3db820}));
+  foot.scale.set(1.6,.45,1.1); foot.position.y=-.78; g.add(foot);
+  g.position.set(side*.35,-.18,-.22); g.rotation.z=side*.1; frogGroup.add(g); return g;
+}
+const flL=makeFrontLeg(-1), flR=makeFrontLeg(1);
+const blL=makeBackLeg(-1),  blR=makeBackLeg(1);
+
+frogGroup.position.set(0,1,0); frogGroup.castShadow=true; scene.add(frogGroup);
+
+const camPivot = new THREE.Object3D();
+frogGroup.add(camPivot);
+camPivot.position.set(0,.6,0);
+camera.position.set(0,1.4,5);
+camPivot.add(camera);
+
+// ─── Tong ─────────────────────────────────────────────────────
+const tongueMat  = new THREE.MeshLambertMaterial({color:0xd63060});
+const tongueCyl  = new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,1,8), tongueMat);
+const tongueBall = new THREE.Mesh(new THREE.SphereGeometry(.1,10,8), tongueMat);
+const tongueBase = new THREE.Mesh(new THREE.SphereGeometry(.07,8,6), tongueMat);
+[tongueCyl,tongueBall,tongueBase].forEach(m=>{m.visible=false; scene.add(m);});
+
+// ─── STATE ────────────────────────────────────────────────────
+let score=0, lives=3, fliesCaught=0;
+let gameState='idle';
+let yaw=0, pitch=0;
+const keys={};
+let rmb=false, lastMX=container.clientWidth/2, lastMY=container.clientHeight/2;
+let tongueActive=false, tongueProgress=0;
+const tongueDir=new THREE.Vector3(), tongueOrigin=new THREE.Vector3();
+const TONGUE_SPD=1.3, TONGUE_MAX=18;
+let tongueHit=false;
+let velY=0, onGround=false;
+const GRAV=.013, JUMP_F=.32;
+const pos=new THREE.Vector3(0,1,0);
+let lastGroundY=0;
+const raycaster=new THREE.Raycaster(), mouse2D=new THREE.Vector2();
+let msgTimer=0, legAngle=0;
+const partSystems=[];
+
+// ─── HUD & Progress UI ────────────────────────────────────────
+function buildProgressUI(){
+  const bar=document.getElementById('progress');
+  bar.innerHTML='';
+  for(let i=0;i<checkpoints.length;i++){
+    const d=document.createElement('div');
+    d.className='cp-dot'; d.id='cp'+i; d.textContent=i+1;
+    bar.appendChild(d);
+    if(i<checkpoints.length-1){
+      const line=document.createElement('div');
+      line.style.cssText='width:24px;height:2px;background:rgba(255,255,255,.25);';
+      line.id='cpline'+i; bar.appendChild(line);
+    }
+  }
+}
+buildProgressUI();
+
+function updateProgressUI(){
+  checkpoints.forEach((cp,i)=>{
+    const d=document.getElementById('cp'+i); if(!d) return;
+    d.className='cp-dot'+(cp.activated?' done':i===cpIndex?' active':'');
+    const line=document.getElementById('cpline'+i);
+    if(line) line.style.background=cp.activated?'rgba(127,255,127,.5)':'rgba(255,255,255,.25)';
+  });
+}
+
+function updateHUD(){
+  document.getElementById('sc').textContent  = score;
+  document.getElementById('lv').textContent  = lives;
+  document.getElementById('cp').textContent  = cpIndex;
+  document.getElementById('cpt').textContent = checkpoints.length;
+  document.getElementById('fl').textContent  = fliesCaught;
+  const diffs=[
+    {t:'🟢 Makkelijk',c:'#7eff7e'},{t:'🟡 Normaal',c:'#ffe44e'},
+    {t:'🟡 Normaal',c:'#ffe44e'},{t:'🟠 Moeilijk',c:'#ffaa44'},
+    {t:'🔴 Hard',c:'#ff6644'},{t:'💀 Extreem',c:'#ff3333'},
+  ];
+  const d=diffs[Math.min(cpIndex,diffs.length-1)];
+  const dp=document.getElementById('diff-pill');
+  if(dp){dp.textContent=d.t; dp.style.borderColor=d.c;}
+}
+
+// ─── INPUT ────────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  keys[e.code]=true;
+  if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+});
+document.addEventListener('keyup',e=>{ keys[e.code]=false; });
+document.addEventListener('mousedown',e=>{
+  if(e.button===2){ rmb=true; lastMX=e.clientX; lastMY=e.clientY; e.preventDefault(); }
+});
+document.addEventListener('mouseup',e=>{ if(e.button===2) rmb=false; });
+document.addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('mousemove',e=>{
+  if(rmb&&gameState==='playing'){
+    yaw  -=(e.clientX-lastMX)*.0025;
+    pitch-=(e.clientY-lastMY)*.0025;
+    pitch=Math.max(-.8,Math.min(.8,pitch));
+    lastMX=e.clientX; lastMY=e.clientY;
+  }
+});
+
+canvas.addEventListener('click',e=>{
+  if(gameState!=='playing'||tongueActive) return;
+  const rect=canvas.getBoundingClientRect();
+  mouse2D.x=((e.clientX-rect.left)/rect.width)*2-1;
+  mouse2D.y=-((e.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouse2D,camera);
+
+  let best=null, bestDist=Infinity;
+  checkpoints.filter(cp=>cp.fly).forEach(cp=>{
+    const toFly=cp.fly.position.clone().sub(raycaster.ray.origin);
+    const proj=toFly.dot(raycaster.ray.direction);
+    if(proj<0) return;
+    const closest=raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction,proj);
+    const d=closest.distanceTo(cp.fly.position);
+    if(d<2.0&&proj<bestDist){best=cp.fly; bestDist=proj;}
+  });
+  camera.getWorldPosition(tongueOrigin); tongueOrigin.y-=.1;
+  tongueDir.copy(best ? best.position.clone().sub(tongueOrigin).normalize() : raycaster.ray.direction.clone());
+  tongueActive=true; tongueProgress=0; tongueHit=false;
+});
+
+// ─── Start knop ───────────────────────────────────────────────
+document.getElementById('startBtn').addEventListener('click',()=>{
+  gameState='playing';
+  document.getElementById('overlay').style.display='none';
+  document.getElementById('crosshair').style.display='block';
+  cpIndex=0; updateHUD(); updateProgressUI();
+});
+
+// ─── Game logic ───────────────────────────────────────────────
+function activateCheckpoint(cp){
+  if(cp.activated) return;
+  cp.activated=true; cpIndex++;
+  updateHUD(); updateProgressUI();
+  cp.flag.children[1].material.color.setHex(0x44ff44);
+  if(cpIndex<checkpoints.length) spawnCheckpointFly(checkpoints[cpIndex]);
+  showMsg('✅ Checkpoint '+(cp.idx+1)+'!');
+}
+function catchFly(cp){
+  if(!cp.fly) return;
+  score+=100; fliesCaught++;
+  spawnParticles(cp.fly.position.clone(),0xffe44e);
+  scene.remove(cp.fly); cp.fly=null;
+  updateHUD(); showMsg('🪰 Vlieg gevangen! +100');
+}
+function winGame(){
+  gameState='won';
+  const ov=document.getElementById('overlay');
+  ov.innerHTML=`<h1>🎉 Gewonnen!</h1>
+    <p>Je hebt alle checkpoints gehaald!<br>
+    Score: <b style="color:#7eff7e;font-size:24px;">${score}</b><br>
+    Vliegen gevangen: <b style="color:#7eff7e;">${fliesCaught}</b></p>
+    <button onclick="location.reload()">Opnieuw 🐸</button>`;
+  ov.style.display='flex';
+}
+function loseLife(){
+  lives--; updateHUD();
+  if(lives<=0){
+    gameState='over';
+    const ov=document.getElementById('overlay');
+    ov.innerHTML=`<h1>💀 Game Over</h1>
+      <p>Score: <b style="color:#7eff7e;">${score}</b></p>
+      <button onclick="location.reload()">Opnieuw 🐸</button>`;
+    ov.style.display='flex';
+  } else {
+    showMsg('💔 Leven kwijt! Nog '+lives);
+    pos.set(0,1,0); velY=0;
+    if(cpIndex>0){ const lcp=checkpoints[cpIndex-1].platform; pos.set(lcp.x,lcp.y+1,lcp.z); }
+  }
+}
+function showMsg(txt){
+  const el=document.getElementById('msg'); el.textContent=txt; el.style.opacity='1'; msgTimer=120;
+}
+
+// ─── Collision ────────────────────────────────────────────────
+function checkPlatformCollision(){
+  for(const {data:p} of platMeshes){
+    const hw=p.w/2, hd=p.d/2, top=p.y+.3+.5;
+    if(pos.x>p.x-hw-.3&&pos.x<p.x+hw+.3&&pos.z>p.z-hd-.3&&pos.z<p.z+hd+.3&&
+       pos.y<=top+.15&&pos.y>=top-.5&&velY<=0){
+      pos.y=top; lastGroundY=pos.y;
+      if(p.checkpoint){
+        const cp=checkpoints.find(c=>c.platform===p);
+        if(cp&&!cp.activated&&cp.idx===cpIndex) activateCheckpoint(cp);
+      }
+      if(p.isEnd&&cpIndex>=checkpoints.length) winGame();
+      return true;
+    }
+  }
+  return false;
+}
+
+// ─── Particles ────────────────────────────────────────────────
+function spawnParticles(p3,col=0x5ab82a){
+  const ps=[];
+  for(let i=0;i<16;i++){
+    const m=new THREE.Mesh(new THREE.SphereGeometry(.08,4,4),
+      new THREE.MeshLambertMaterial({color:Math.random()<.5?col:0xffffff,transparent:true}));
+    m.position.copy(p3);
+    const angle=Math.random()*Math.PI*2, spd=.08+Math.random()*.12;
+    m.userData={vx:Math.cos(angle)*spd, vy:.1+Math.random()*.14, vz:Math.sin(angle)*spd, life:1};
+    scene.add(m); ps.push(m);
+  }
+  partSystems.push(ps);
+}
+
+// ─── Pijlen ───────────────────────────────────────────────────
+const guideArrows=[];
+for(let i=0;i<COURSE.length-1;i++){
+  const a=COURSE[i], b=COURSE[i+1];
+  const midX=(a.x+b.x)/2, midZ=(a.z+b.z)/2, midY=Math.max(a.y,b.y)+1.8;
+  const cone=new THREE.Mesh(new THREE.ConeGeometry(.3,.9,6),
+    new THREE.MeshBasicMaterial({color:b.checkpoint?0xffe44e:0x88ffff,transparent:true,opacity:.8}));
+  cone.rotation.x=Math.PI/2;
+  cone.position.set(midX,midY,midZ);
+  cone.rotation.y=Math.atan2(b.x-a.x, b.z-a.z);
+  cone.userData={bobBase:midY, bobPhase:i*.9, cpIndex:i};
+  scene.add(cone); guideArrows.push(cone);
+}
+
+// ─── GAME LOOP ────────────────────────────────────────────────
+let t0=performance.now();
+
+function loop(){
+  requestAnimationFrame(loop);
+  const now=performance.now(), dt=Math.min((now-t0)/16.7,3); t0=now;
+  const t=now/1000;
+
+  // Pijlen animeren
+  guideArrows.forEach(arr=>{
+    arr.position.y=arr.userData.bobBase+Math.sin(t*2.5+arr.userData.bobPhase)*.3;
+    arr.visible=arr.userData.cpIndex>=cpIndex;
+  });
+
+  // Wolken
+  scene.children.forEach(obj=>{ if(obj.userData.drift) obj.position.x+=obj.userData.drift*dt; });
+  // Eindring
+  scene.children.forEach(obj=>{ if(obj.userData.isEndRing) obj.rotation.z+=.015*dt; });
+
+  if(gameState!=='playing'){ renderer.render(scene,camera); return; }
+
+  // ─ Beweging ──────────────────────────────────────────────────
+  const spd=.12*dt;
+  const fwd=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+  const rgt=new THREE.Vector3( Math.cos(yaw),0,-Math.sin(yaw));
+  let moving=false;
+  if(keys['KeyW']||keys['ArrowUp'])    {pos.addScaledVector(fwd, spd); moving=true;}
+  if(keys['KeyS']||keys['ArrowDown'])  {pos.addScaledVector(fwd,-spd); moving=true;}
+  if(keys['KeyA']||keys['ArrowLeft'])  {pos.addScaledVector(rgt,-spd); moving=true;}
+  if(keys['KeyD']||keys['ArrowRight']) {pos.addScaledVector(rgt, spd); moving=true;}
+  if(keys['Space']&&onGround){velY=JUMP_F; onGround=false;}
+
+  velY-=GRAV*dt; pos.y+=velY*dt;
+  onGround=checkPlatformCollision();
+  if(onGround){velY=0; lastGroundY=pos.y;}
+
+  if(pos.y<lastGroundY-10) loseLife();
+  pos.x=Math.max(-100,Math.min(100,pos.x));
+  pos.z=Math.max(-100,Math.min(100,pos.z));
+
+  // ─ Kikker animatie ───────────────────────────────────────────
+  frogGroup.position.copy(pos);
+  frogGroup.rotation.y=yaw;
+  camPivot.rotation.x=pitch;
+
+  if(!onGround) frogGroup.scale.set(.88,1.18,.88);
+  else frogGroup.scale.lerp(new THREE.Vector3(1,1,1),.2*dt);
+
+  if(moving&&onGround){
+    legAngle+=.2*dt;
+    blL.rotation.x=Math.sin(legAngle)*.7;  blR.rotation.x=Math.sin(legAngle+Math.PI)*.7;
+    flL.rotation.x=Math.sin(legAngle+Math.PI)*.4; flR.rotation.x=Math.sin(legAngle)*.4;
+    bodyMesh.position.y=Math.sin(legAngle*2)*.03;
+  } else bodyMesh.position.y=0;
+
+  // ─ Vliegen animatie ──────────────────────────────────────────
+  checkpoints.forEach(cp=>{
+    if(!cp.fly) return;
+    const d=cp.fly.userData;
+    d.wobble+=.04*dt;
+    cp.fly.position.y=d.baseY+Math.sin(d.wobble)*.5;
+    cp.fly.rotation.y+=.03*dt;
+    cp.fly.children.forEach((c,i)=>{ if(i===2||i===3) c.rotation.z=Math.sin(t*10)*.4; });
+    if(d.halo) d.halo.material.opacity=.7+Math.sin(t*4+d.wobble)*.25;
+    if(d.ring) d.ring.material.opacity=.35+Math.sin(t*3)*.15;
+  });
+
+  // ─ Tong ──────────────────────────────────────────────────────
+  if(tongueActive){
+    tongueProgress+=TONGUE_SPD*dt;
+    const tip=tongueOrigin.clone().addScaledVector(tongueDir,tongueProgress);
+    const mid=tongueOrigin.clone().lerp(tip,.5);
+    [tongueCyl,tongueBall,tongueBase].forEach(m=>m.visible=true);
+    tongueCyl.position.copy(mid); tongueCyl.scale.y=tongueProgress;
+    tongueCyl.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),tongueDir);
+    tongueBall.position.copy(tip); tongueBase.position.copy(tongueOrigin);
+    if(!tongueHit){
+      checkpoints.forEach(cp=>{
+        if(!cp.fly||tongueHit) return;
+        if(cp.fly.position.distanceTo(tip)<1.0){catchFly(cp); tongueHit=true;}
+      });
+    }
+    if(tongueProgress>=TONGUE_MAX||tongueHit){
+      tongueActive=false;
+      [tongueCyl,tongueBall,tongueBase].forEach(m=>m.visible=false);
+    }
+  }
+
+  // ─ Particles ─────────────────────────────────────────────────
+  for(let i=partSystems.length-1;i>=0;i--){
+    let alive=false;
+    partSystems[i].forEach(p=>{
+      if(p.userData.life>0){
+        p.position.x+=p.userData.vx*dt; p.position.y+=p.userData.vy*dt; p.position.z+=p.userData.vz*dt;
+        p.userData.vy-=.007*dt; p.userData.life-=.045*dt; p.material.opacity=p.userData.life; alive=true;
+      } else scene.remove(p);
+    });
+    if(!alive) partSystems.splice(i,1);
+  }
+
+  // ─ Bericht fade ──────────────────────────────────────────────
+  if(msgTimer>0){
+    msgTimer-=dt;
+    document.getElementById('msg').style.opacity=Math.min(1,msgTimer/15).toString();
+  }
+
+  renderer.render(scene,camera);
+}
+
+loop();
+</script>
+</body>
+</html>
